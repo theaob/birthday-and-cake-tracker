@@ -33,11 +33,13 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
     fetchPeople();
   }, [refreshTrigger, currentDate]);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const deletePerson = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this birthday?')) return;
     try {
       await fetch(`/api/people/${id}`, { method: 'DELETE' });
       fetchPeople();
+      setConfirmDeleteId(null);
     } catch (err) {
       console.error(err);
     }
@@ -170,13 +172,21 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                   <CakeStatusToggle personId={person.id} initialStatus={person.cakeBought} onStatusChange={fetchPeople} />
-                  <button 
-                    onClick={() => deletePerson(person.id)}
-                    style={{ background: 'none', border: 'none', color: 'var(--danger-color)', cursor: 'pointer', opacity: 0.7 }}
-                    title="Delete Person"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  {confirmDeleteId === person.id ? (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--danger-color)' }}>Sure?</span>
+                      <button onClick={() => deletePerson(person.id)} className="btn" style={{ padding: '4px 8px', background: 'var(--danger-color)', color: 'white', minHeight: 'auto', fontSize: '0.8rem' }}>Yes</button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="btn btn-ghost" style={{ padding: '4px 8px', minHeight: 'auto', fontSize: '0.8rem' }}>No</button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setConfirmDeleteId(person.id)}
+                      style={{ background: 'none', border: 'none', color: 'var(--danger-color)', cursor: 'pointer', opacity: 0.7 }}
+                      title="Delete Person"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
