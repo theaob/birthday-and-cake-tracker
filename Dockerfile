@@ -36,6 +36,8 @@ RUN adduser --system --uid 1001 nextjs
 
 # Set permissions for the prisma sqlite database directory if mounted
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+# Copy the local dev.db into the image so the sqlite tables exist!
+COPY --chown=nextjs:nodejs dev.db /app/data/dev.db
 
 COPY --from=builder /app/public ./public
 
@@ -58,6 +60,8 @@ EXPOSE 3000
 ENV PORT=3000
 # set hostname to localhost
 ENV HOSTNAME="0.0.0.0"
+
+ENV DATABASE_URL="file:/app/data/dev.db"
 
 # Note: Supply a DATABASE_URL env var during deployment like DATABASE_URL="file:/app/data/prod.db"
 # And run migrations or push db structure before starting the server.
