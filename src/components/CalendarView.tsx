@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, parseISO, isSameMonth, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
+import { format, parseISO, isSameMonth, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, getMonth, getDate } from 'date-fns';
 import { ChevronLeft, ChevronRight, Cake, Trash2 } from 'lucide-react';
 import CakeStatusToggle from './CakeStatusToggle';
 
@@ -59,8 +59,8 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
     return <div style={{ padding: '40px', textAlign: 'center' }}>Loading calendar...</div>;
   }
 
-  // Get people born this month
-  const currentMonthBirthdays = people.filter(p => isSameMonth(parseISO(p.birthday), currentDate));
+  // Get people born this month regardless of year
+  const currentMonthBirthdays = people.filter(p => getMonth(parseISO(p.birthday)) === getMonth(currentDate));
 
   return (
     <div className="glass-panel" style={{ padding: '24px' }}>
@@ -95,7 +95,10 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
         ))}
         
         {daysInMonth.map((day, i) => {
-          const dayBirthdays = people.filter(p => isSameDay(parseISO(p.birthday), day) && isSameMonth(parseISO(p.birthday), day));
+          const dayBirthdays = people.filter(p => {
+            const bDate = parseISO(p.birthday);
+            return getMonth(bDate) === getMonth(day) && getDate(bDate) === getDate(day);
+          });
           const isToday = isSameDay(day, new Date());
           
           return (
