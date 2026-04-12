@@ -184,7 +184,7 @@ export default function SettingsPanel() {
                 <label className="input-label" htmlFor="smtpHost">Host</label>
                 <input id="smtpHost" className="input-field" type="text" placeholder="smtp.gmail.com" value={settings.smtpHost} onChange={e => handleChange('smtpHost', e.target.value)} />
               </div>
-              <div className="input-group" style={{ marginBottom: 0, width: '90px' }}>
+              <div className="input-group" style={{ marginBottom: 0, width: '110px', minWidth: '110px' }}>
                 <label className="input-label" htmlFor="smtpPort">Port</label>
                 <input id="smtpPort" className="input-field" type="number" value={settings.smtpPort} onChange={e => handleChange('smtpPort', parseInt(e.target.value, 10))} />
               </div>
