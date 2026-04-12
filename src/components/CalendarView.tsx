@@ -16,6 +16,8 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
   const [currentDate, setCurrentDate] = useState(new Date());
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'month' | 'all'>('month');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchPeople = async () => {
     try {
@@ -32,8 +34,6 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
   useEffect(() => {
     fetchPeople();
   }, [refreshTrigger, currentDate]);
-
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const deletePerson = async (id: string) => {
     try {
@@ -58,8 +58,6 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
   if (loading) {
     return <div style={{ padding: '40px', textAlign: 'center' }}>Loading calendar...</div>;
   }
-
-  const [viewMode, setViewMode] = useState<'month' | 'all'>('month');
 
   // Get displayed people based on viewMode
   const displayedPeople = people.filter(p => {
