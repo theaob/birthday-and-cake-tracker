@@ -59,8 +59,19 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
     return <div style={{ padding: '40px', textAlign: 'center' }}>Loading calendar...</div>;
   }
 
-  // Get people born this month regardless of year
-  const currentMonthBirthdays = people.filter(p => getMonth(parseISO(p.birthday)) === getMonth(currentDate));
+  const [viewMode, setViewMode] = useState<'month' | 'all'>('month');
+
+  // Get displayed people based on viewMode
+  const displayedPeople = people.filter(p => {
+    if (viewMode === 'all') return true;
+    return getMonth(parseISO(p.birthday)) === getMonth(currentDate);
+  }).sort((a, b) => {
+    const dateA = parseISO(a.birthday);
+    const dateB = parseISO(b.birthday);
+    const monthDiff = getMonth(dateA) - getMonth(dateB);
+    if (monthDiff !== 0) return monthDiff;
+    return getDate(dateA) - getDate(dateB);
+  });
 
   return (
     <div className="glass-panel" style={{ padding: '24px' }}>
@@ -148,15 +159,33 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
       </div>
 
       <div>
-        <h3 style={{ fontSize: '1.2rem', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-          This Month's Birthdays
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+          <h3 style={{ fontSize: '1.2rem' }}>
+            {viewMode === 'month' ? `Birthdays in ${format(currentDate, 'MMMM')}` : 'All Birthdays'}
+          </h3>
+          <div style={{ display: 'flex', background: 'var(--bg-primary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            <button 
+              onClick={() => setViewMode('month')}
+              className={`btn ${viewMode === 'month' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ padding: '4px 12px', fontSize: '0.75rem', minHeight: 'auto', border: 'none', boxShadow: viewMode === 'month' ? 'var(--shadow-sm)' : 'none' }}
+            >
+              Month
+            </button>
+            <button 
+              onClick={() => setViewMode('all')}
+              className={`btn ${viewMode === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ padding: '4px 12px', fontSize: '0.75rem', minHeight: 'auto', border: 'none', boxShadow: viewMode === 'all' ? 'var(--shadow-sm)' : 'none' }}
+            >
+              All
+            </button>
+          </div>
+        </div>
         
-        {currentMonthBirthdays.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)' }}>No birthdays this month.</p>
+        {displayedPeople.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)' }}>No birthdays found.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {currentMonthBirthdays.map(person => (
+            {displayedPeople.map(person => (
               <div key={person.id} style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
@@ -169,7 +198,7 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{person.name}</div>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                    {format(parseISO(person.birthday), 'MMMM do, yyyy')}
+                    {format(parseISO(person.birthday), 'MMMM do')} {format(parseISO(person.birthday), 'yyyy') !== format(new Date(), 'yyyy') && `(${format(parseISO(person.birthday), 'yyyy')})`}
                   </div>
                 </div>
                 
