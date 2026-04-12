@@ -5,19 +5,22 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# Copy prisma schema so we can generate the client here and cache it
+COPY prisma ./prisma
+RUN npm ci && npx prisma generate
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-# Environment variables must be present at build time
-# https://nextjs.org/docs/messages/prerender-error
-# Generate Prisma Client
-RUN npx prisma generate
+# Copy only the necessary files for building to maximize cache hits
+COPY src ./src
+COPY public ./public
+COPY next.config.ts .
+COPY tsconfig.json .
+COPY package.json .
+COPY prisma ./prisma
 
 # Next.js disables telemetry locally, but just in case
 ENV NEXT_TELEMETRY_DISABLED=1
