@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Birthday & Cake Tracker
 
-## Getting Started
+Track people's birthdays on a calendar and make sure a cake gets organised
+for each one. Optionally sends a daily email reminder for birthdays that
+fall on the current day.
 
-First, run the development server:
+## Security model
+
+This app has **no login** — anyone who can reach it can add, edit, or
+delete birthdays. It's built to run on a trusted network (home server,
+private LAN, behind a VPN) rather than be exposed directly to the public
+internet. The Email Settings panel is the one part that can be locked with
+an admin password (see `ADMIN_PASSWORD` below); everything else is open by
+design.
+
+If you need to expose this publicly, put it behind a reverse proxy with
+its own authentication (e.g. Caddy/Traefik + basic auth, Authelia,
+Tailscale/Cloudflare Access) rather than relying on the app itself.
+
+## Environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | No | SQLite connection string. Defaults to `file:./dev.db` locally; the Docker image sets it to a mounted volume path. |
+| `ADMIN_PASSWORD` | No | If set, the Email Settings panel requires this password (sent as the `x-admin-password` header) to view or change SMTP config. If unset, settings are open. |
+| `CRON_SECRET` | No | If set, `/api/cron` requires `Authorization: Bearer <CRON_SECRET>`. Recommended if the cron endpoint is reachable from outside. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `NOTIFICATION_EMAIL` | No | Fallback SMTP config used by `/api/cron` if nothing has been saved yet in the Email Settings panel (which is stored in the database and takes priority). |
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Locally, Prisma reads/writes a `dev.db` SQLite file (gitignored — never
+commit real data). Apply migrations with:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx prisma migrate dev
+```
 
-## Learn More
+## Birthday reminder cron
 
-To learn more about Next.js, take a look at the following resources:
+`/api/cron` checks for birthdays today and, if email is configured and
+enabled, sends a reminder. Trigger it daily with whatever scheduler you
+have available — Vercel Cron, GitHub Actions, `cron` + `trigger-cron.js`,
+etc. Protect it with `CRON_SECRET` if it's reachable from outside your
+network.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Docker
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The image is built with `output: 'standalone'` and does **not** ship a
+database — the SQLite file lives on a volume you mount, and pending Prisma
+migrations are applied automatically on container start.
 
-## Deploy on Vercel
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -v birthday-tracker-data:/app/data \
+  -e ADMIN_PASSWORD=changeme \
+  ghcr.io/<owner>/birthday-and-cake-tracker:latest
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`DATABASE_URL` defaults to `file:/app/data/prod.db` inside the container;
+override it if you want a different path or filename. To upgrade, just
+pull a new image and restart the container against the same volume — the
+entrypoint runs `prisma migrate deploy` before starting the server.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Learn more
+
+Built with [Next.js](https://nextjs.org), [Prisma](https://www.prisma.io)
+(SQLite via `@prisma/adapter-libsql`), and [date-fns](https://date-fns.org).

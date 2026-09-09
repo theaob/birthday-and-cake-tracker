@@ -28,7 +28,7 @@ export default function AddPersonPanel({ onAddSuccess }: { onAddSuccess: () => v
       setName('');
       setBirthday('');
       onAddSuccess();
-    } catch (err) {
+    } catch {
       setError('An error occurred while adding the birthday.');
     } finally {
       setIsSubmitting(false);

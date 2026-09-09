@@ -1,5 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { createHash, timingSafeEqual } from 'crypto';
+
+// Constant-time string comparison, done by comparing fixed-length digests
+// so differing input lengths don't short-circuit the timing-safe check.
+function safeCompare(a: string, b: string): boolean {
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
 
 export async function GET() {
   try {
@@ -25,7 +34,7 @@ export async function POST(request: Request) {
     const adminPassword = process.env.ADMIN_PASSWORD;
     if (adminPassword) {
       const providedPassword = request.headers.get('x-admin-password');
-      if (providedPassword !== adminPassword) {
+      if (!providedPassword || !safeCompare(providedPassword, adminPassword)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     }

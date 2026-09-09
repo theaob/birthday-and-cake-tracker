@@ -24,6 +24,9 @@ model EmailSettings {
   smtpPort   Int     @default(587)
   smtpSecure Boolean @default(false)
   smtpUser   String  @default("")
+  // NOTE: stored in plaintext. Set ADMIN_PASSWORD so this route requires
+  // auth to read/write, and prefer an app-specific SMTP password over a
+  // real account password.
   smtpPass   String  @default("")
   recipients String  @default("")
   enabled    Boolean @default(false)
