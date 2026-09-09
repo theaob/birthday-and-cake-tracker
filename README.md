@@ -1,30 +1,49 @@
 # Birthday & Cake Tracker
 
 Track people's birthdays on a calendar and make sure a cake gets organised
-for each one. Optionally sends a daily email reminder for birthdays that
+for each one. Optionally sends a daily Zulip reminder for birthdays that
 fall on the current day.
 
 ## Security model
 
-This app has **no login** — anyone who can reach it can add, edit, or
-delete birthdays. It's built to run on a trusted network (home server,
-private LAN, behind a VPN) rather than be exposed directly to the public
-internet. The Email Settings panel is the one part that can be locked with
-an admin password (see `ADMIN_PASSWORD` below); everything else is open by
-design.
+The whole app requires signing in via Keycloak (OIDC) — every page and
+every `/api/*` route is gated by `src/proxy.ts`, except `/api/cron`, which
+is called server-to-server by an external scheduler and is protected by
+its own `CRON_SECRET` bearer token instead of a browser session.
 
-If you need to expose this publicly, put it behind a reverse proxy with
-its own authentication (e.g. Caddy/Traefik + basic auth, Authelia,
-Tailscale/Cloudflare Access) rather than relying on the app itself.
+It's still built to run on a trusted deployment (your own server, behind
+your own reverse proxy) rather than assuming internet-facing hardening —
+`trustHost: true` is set in `src/auth.ts` so Auth.js trusts the Host
+header when self-hosted (not on Vercel).
 
 ## Environment variables
 
 | Variable | Required | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | No | SQLite connection string. Defaults to `file:./dev.db` locally; the Docker image sets it to a mounted volume path. |
-| `ADMIN_PASSWORD` | No | If set, the Email Settings panel requires this password (sent as the `x-admin-password` header) to view or change SMTP config. If unset, settings are open. |
+| `AUTH_SECRET` | **Yes** | Secret used by Auth.js to sign session JWTs. Generate one with `npx auth secret`. |
+| `AUTH_KEYCLOAK_ID` | **Yes** | Client ID of the OIDC client registered in your Keycloak realm. |
+| `AUTH_KEYCLOAK_SECRET` | **Yes** | Client secret for that Keycloak client. |
+| `AUTH_KEYCLOAK_ISSUER` | **Yes** | Issuer URL, e.g. `https://keycloak.example.com/realms/<realm>`. |
 | `CRON_SECRET` | No | If set, `/api/cron` requires `Authorization: Bearer <CRON_SECRET>`. Recommended if the cron endpoint is reachable from outside. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `NOTIFICATION_EMAIL` | No | Fallback SMTP config used by `/api/cron` if nothing has been saved yet in the Email Settings panel (which is stored in the database and takes priority). |
+| `ZULIP_SITE_URL`, `ZULIP_BOT_EMAIL`, `ZULIP_API_KEY`, `ZULIP_STREAM`, `ZULIP_TOPIC` | No | Fallback Zulip config used by `/api/cron` if nothing has been saved yet in the Settings panel (which is stored in the database and takes priority). |
+
+### Setting up the Keycloak client
+
+In your Keycloak admin console, create an OIDC client for this app (confidential, standard flow enabled) with a valid redirect URI of:
+
+```
+https://<your-app-domain>/api/auth/callback/keycloak
+```
+
+Use the client ID/secret and your realm's issuer URL (`<keycloak-base-url>/realms/<realm-name>`) for the `AUTH_KEYCLOAK_*` variables above.
+
+### Setting up the Zulip bot
+
+In Zulip, go to **Personal settings → Bots** and create a new **Generic bot**
+(an incoming-webhook bot also works). Note its email and API key, and enter
+them in the app's Settings panel along with your Zulip site URL and the
+stream/topic to post reminders to.
 
 ## Getting started
 
@@ -33,7 +52,9 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). You'll be redirected to
+Keycloak to sign in, so `AUTH_SECRET`/`AUTH_KEYCLOAK_*` need to be set even
+locally (a `.env` file works fine — see `prisma.config.ts`).
 
 Locally, Prisma reads/writes a `dev.db` SQLite file (gitignored — never
 commit real data). Apply migrations with:
@@ -44,11 +65,11 @@ npx prisma migrate dev
 
 ## Birthday reminder cron
 
-`/api/cron` checks for birthdays today and, if email is configured and
-enabled, sends a reminder. Trigger it daily with whatever scheduler you
-have available — Vercel Cron, GitHub Actions, `cron` + `trigger-cron.js`,
-etc. Protect it with `CRON_SECRET` if it's reachable from outside your
-network.
+`/api/cron` checks for birthdays today and, if Zulip is configured and
+enabled, posts a reminder message to the configured stream/topic. Trigger
+it daily with whatever scheduler you have available — GitHub Actions,
+`cron` + `trigger-cron.js`, etc. Protect it with `CRON_SECRET` if it's
+reachable from outside your network.
 
 ## Docker
 
@@ -60,7 +81,10 @@ migrations are applied automatically on container start.
 docker run -d \
   -p 3000:3000 \
   -v birthday-tracker-data:/app/data \
-  -e ADMIN_PASSWORD=changeme \
+  -e AUTH_SECRET=... \
+  -e AUTH_KEYCLOAK_ID=... \
+  -e AUTH_KEYCLOAK_SECRET=... \
+  -e AUTH_KEYCLOAK_ISSUER=https://keycloak.example.com/realms/your-realm \
   ghcr.io/<owner>/birthday-and-cake-tracker:latest
 ```
 
@@ -72,4 +96,5 @@ entrypoint runs `prisma migrate deploy` before starting the server.
 ## Learn more
 
 Built with [Next.js](https://nextjs.org), [Prisma](https://www.prisma.io)
-(SQLite via `@prisma/adapter-libsql`), and [date-fns](https://date-fns.org).
+(SQLite via `@prisma/adapter-libsql`), [Auth.js](https://authjs.dev)
+(Keycloak provider), and [date-fns](https://date-fns.org).

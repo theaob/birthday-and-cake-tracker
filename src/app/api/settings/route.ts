@@ -1,26 +1,19 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { createHash, timingSafeEqual } from 'crypto';
 
-// Constant-time string comparison, done by comparing fixed-length digests
-// so differing input lengths don't short-circuit the timing-safe check.
-function safeCompare(a: string, b: string): boolean {
-  const hashA = createHash('sha256').update(a).digest();
-  const hashB = createHash('sha256').update(b).digest();
-  return timingSafeEqual(hashA, hashB);
-}
+// Auth note: this route is behind the app-wide Keycloak login enforced by
+// src/middleware.ts — there's no separate password gate here anymore.
 
 export async function GET() {
   try {
-    const settings = await prisma.emailSettings.upsert({
+    const settings = await prisma.zulipSettings.upsert({
       where: { id: 'singleton' },
       update: {},
       create: { id: 'singleton' },
     });
     return NextResponse.json({
       ...settings,
-      smtpPass: settings.smtpPass ? '••••••••' : '',
-      passwordRequired: !!process.env.ADMIN_PASSWORD,
+      apiKey: settings.apiKey ? '••••••••' : '',
     });
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -30,39 +23,29 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    // Require admin password if one is configured
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    if (adminPassword) {
-      const providedPassword = request.headers.get('x-admin-password');
-      if (!providedPassword || !safeCompare(providedPassword, adminPassword)) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
-
     const body = await request.json();
-    const { smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, recipients, enabled } = body;
+    const { siteUrl, botEmail, apiKey, stream, topic, enabled } = body;
 
     const updateData: Record<string, unknown> = {
-      smtpHost: smtpHost ?? '',
-      smtpPort: smtpPort ? Number(smtpPort) : 587,
-      smtpSecure: smtpSecure ?? false,
-      smtpUser: smtpUser ?? '',
-      recipients: recipients ?? '',
+      siteUrl: siteUrl ?? '',
+      botEmail: botEmail ?? '',
+      stream: stream ?? '',
+      topic: topic ?? 'Birthdays',
       enabled: enabled ?? false,
     };
 
-    // Only update password if it's not the masked placeholder
-    if (smtpPass && smtpPass !== '••••••••') {
-      updateData.smtpPass = smtpPass;
+    // Only update the API key if it's not the masked placeholder
+    if (apiKey && apiKey !== '••••••••') {
+      updateData.apiKey = apiKey;
     }
 
-    const settings = await prisma.emailSettings.upsert({
+    const settings = await prisma.zulipSettings.upsert({
       where: { id: 'singleton' },
       update: updateData,
       create: { id: 'singleton', ...updateData },
     });
 
-    return NextResponse.json({ ...settings, smtpPass: settings.smtpPass ? '••••••••' : '' });
+    return NextResponse.json({ ...settings, apiKey: settings.apiKey ? '••••••••' : '' });
   } catch (error) {
     console.error('Error saving settings:', error);
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });

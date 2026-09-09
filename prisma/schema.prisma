@@ -18,16 +18,16 @@ model Person {
   updatedAt  DateTime @updatedAt
 }
 
-model EmailSettings {
-  id         String  @id @default("singleton")
-  smtpHost   String  @default("")
-  smtpPort   Int     @default(587)
-  smtpSecure Boolean @default(false)
-  smtpUser   String  @default("")
-  // NOTE: stored in plaintext. Set ADMIN_PASSWORD so this route requires
-  // auth to read/write, and prefer an app-specific SMTP password over a
-  // real account password.
-  smtpPass   String  @default("")
-  recipients String  @default("")
-  enabled    Boolean @default(false)
+model ZulipSettings {
+  id       String  @id @default("singleton")
+  // Base URL of the Zulip server, e.g. "https://your-org.zulipchat.com"
+  siteUrl  String  @default("")
+  // Email address of the incoming-webhook bot used to send messages.
+  botEmail String  @default("")
+  // NOTE: stored in plaintext. The whole app requires a Keycloak login,
+  // but treat this key as sensitive (it can post as the bot) regardless.
+  apiKey   String  @default("")
+  stream   String  @default("")
+  topic    String  @default("Birthdays")
+  enabled  Boolean @default(false)
 }
