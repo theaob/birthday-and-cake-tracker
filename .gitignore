@@ -41,3 +41,10 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# local sqlite database (never ship real data in git or Docker images)
+/dev.db
+/dev.db-journal
+*.db
+*.db-journal
+!prisma/migrations/**

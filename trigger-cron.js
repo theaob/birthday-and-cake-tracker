@@ -6,11 +6,17 @@ const http = require('http');
 
 console.log('Triggering daily birthday checking cron... 🕒');
 
+const headers = {};
+if (process.env.CRON_SECRET) {
+  headers['Authorization'] = `Bearer ${process.env.CRON_SECRET}`;
+}
+
 const options = {
-  hostname: 'localhost',
-  port: 3000,
+  hostname: process.env.CRON_HOST || 'localhost',
+  port: process.env.CRON_PORT || 3000,
   path: '/api/cron',
   method: 'GET',
+  headers,
 };
 
 const req = http.request(options, (res) => {

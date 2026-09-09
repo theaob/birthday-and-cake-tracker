@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, parseISO, isSameMonth, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, getMonth, getDate } from 'date-fns';
+import { format, parseISO, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, getMonth, getDate } from 'date-fns';
 import { ChevronLeft, ChevronRight, Cake, Trash2 } from 'lucide-react';
 import CakeStatusToggle from './CakeStatusToggle';
 
@@ -24,7 +24,7 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
       const response = await fetch('/api/people');
       const data = await response.json();
       setPeople(data);
-    } catch (err) {
+    } catch {
       console.error('Failed to load people');
     } finally {
       setLoading(false);
@@ -59,15 +59,31 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
     return <div style={{ padding: '40px', textAlign: 'center' }}>Loading calendar...</div>;
   }
 
+  // Next occurrence of a birthday on/after `today` (rolls over to next year
+  // if this year's date has already passed), used to sort "All" by who's
+  // coming up soonest rather than by calendar month starting from January.
+  const nextOccurrence = (birthday: Date, today: Date) => {
+    const month = getMonth(birthday);
+    const day = getDate(birthday);
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    let next = new Date(today.getFullYear(), month, day);
+    if (next < todayStart) {
+      next = new Date(today.getFullYear() + 1, month, day);
+    }
+    return next;
+  };
+
   // Get displayed people based on viewMode
+  const now = new Date();
   const displayedPeople = people.filter(p => {
     if (viewMode === 'all') return true;
     return getMonth(parseISO(p.birthday)) === getMonth(currentDate);
   }).sort((a, b) => {
     const dateA = parseISO(a.birthday);
     const dateB = parseISO(b.birthday);
-    const monthDiff = getMonth(dateA) - getMonth(dateB);
-    if (monthDiff !== 0) return monthDiff;
+    if (viewMode === 'all') {
+      return nextOccurrence(dateA, now).getTime() - nextOccurrence(dateB, now).getTime();
+    }
     return getDate(dateA) - getDate(dateB);
   });
 
@@ -103,7 +119,7 @@ export default function CalendarView({ refreshTrigger }: { refreshTrigger: numbe
           <div key={`empty-${i}`} style={{ padding: '10px', minHeight: '80px', borderRadius: '8px', background: 'rgba(0,0,0,0.02)' }} />
         ))}
         
-        {daysInMonth.map((day, i) => {
+        {daysInMonth.map((day) => {
           const dayBirthdays = people.filter(p => {
             const bDate = parseISO(p.birthday);
             return getMonth(bDate) === getMonth(day) && getDate(bDate) === getDate(day);

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import nodemailer from 'nodemailer';
 
+// This route is called by an external scheduler, not a logged-in browser
+// session, so it's excluded from the Keycloak gate in src/middleware.ts
+// and instead protected by its own bearer-token secret.
 export async function GET(request: Request) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -27,62 +29,59 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'No birthdays today.' });
     }
 
-    // Load settings from DB, fall back to env vars
-    const dbSettings = await prisma.emailSettings.findUnique({ where: { id: 'singleton' } });
+    const settings = await prisma.zulipSettings.findUnique({ where: { id: 'singleton' } });
 
-    const smtpHost   = dbSettings?.smtpHost   || process.env.SMTP_HOST   || '';
-    const smtpPort   = dbSettings?.smtpPort   || parseInt(process.env.SMTP_PORT || '587', 10);
-    const smtpSecure = dbSettings?.smtpSecure ?? (process.env.SMTP_SECURE === 'true');
-    const smtpUser   = dbSettings?.smtpUser   || process.env.SMTP_USER   || '';
-    const smtpPass   = dbSettings?.smtpPass   || process.env.SMTP_PASS   || '';
-    const enabled    = dbSettings?.enabled    ?? true;
-    const recipientsRaw = dbSettings?.recipients || process.env.NOTIFICATION_EMAIL || smtpUser;
-    const recipients = recipientsRaw.split(',').map((r: string) => r.trim()).filter(Boolean);
+    const siteUrl = settings?.siteUrl || process.env.ZULIP_SITE_URL || '';
+    const botEmail = settings?.botEmail || process.env.ZULIP_BOT_EMAIL || '';
+    const apiKey = settings?.apiKey || process.env.ZULIP_API_KEY || '';
+    const stream = settings?.stream || process.env.ZULIP_STREAM || '';
+    const topic = settings?.topic || process.env.ZULIP_TOPIC || 'Birthdays';
+    const enabled = settings?.enabled ?? true;
 
     if (!enabled) {
-      return NextResponse.json({ message: 'Email reminders are disabled.' });
+      return NextResponse.json({ message: 'Zulip reminders are disabled.' });
     }
 
-    if (!smtpHost || !smtpUser || !smtpPass) {
-      console.log('Birthday email skipped: SMTP not configured. Birthdays today:', birthdayPeople.map(p => p.name).join(', '));
+    if (!siteUrl || !botEmail || !apiKey || !stream) {
+      console.log('Birthday reminder skipped: Zulip not configured. Birthdays today:', birthdayPeople.map(p => p.name).join(', '));
       return NextResponse.json({
-        message: 'Birthdays found, but SMTP is not configured.',
+        message: 'Birthdays found, but Zulip is not configured.',
         people: birthdayPeople.map(p => p.name),
       });
     }
 
-    if (recipients.length === 0) {
-      return NextResponse.json({ message: 'Birthdays found, but no recipients configured.', people: birthdayPeople.map(p => p.name) });
+    const names = birthdayPeople.map(p => p.name);
+    const content = names.length === 1
+      ? `🍰 It's **${names[0]}**'s birthday today! Don't forget the cake.`
+      : `🍰 Birthdays today: ${names.map(n => `**${n}**`).join(', ')}. Don't forget the cake!`;
+
+    const messagesUrl = new URL('/api/v1/messages', siteUrl).toString();
+    const auth = Buffer.from(`${botEmail}:${apiKey}`).toString('base64');
+
+    const response = await fetch(messagesUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        type: 'stream',
+        to: stream,
+        topic,
+        content,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Zulip API error:', response.status, errorBody);
+      return NextResponse.json(
+        { error: 'Failed to send Zulip message', status: response.status },
+        { status: 502 },
+      );
     }
 
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpSecure,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
-
-    const names = birthdayPeople.map(p => p.name);
-    const subject = names.length === 1
-      ? `🍰 It's ${names[0]}'s Birthday Today!`
-      : `🍰 ${names.length} Birthdays Today!`;
-
-    const html = `<div style="font-family: sans-serif; padding: 20px; max-width: 600px;">
-      <h2>🎉 Birthday Reminder!</h2>
-      <p>The following people have a birthday today:</p>
-      <ul>${names.map(n => `<li><strong>${n}</strong></li>`).join('')}</ul>
-      <p>Log in to the Birthday & Cake Tracker to make sure a cake has been organised for everyone!</p>
-    </div>`;
-
-    await transporter.sendMail({
-      from: `"Birthday Tracker" <${smtpUser}>`,
-      to: recipients.join(', '),
-      subject,
-      text: `Birthdays today: ${names.join(', ')}. Don't forget the cake!`,
-      html,
-    });
-
-    return NextResponse.json({ message: 'Birthday emails sent!', count: birthdayPeople.length, recipients });
+    return NextResponse.json({ message: 'Birthday reminder sent to Zulip!', count: birthdayPeople.length, stream, topic });
   } catch (error) {
     console.error('Error during cron execution:', error);
     return NextResponse.json({ error: 'Failed to execute cron' }, { status: 500 });

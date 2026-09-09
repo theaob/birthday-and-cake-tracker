@@ -9,6 +9,17 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci && npx prisma generate
 
+# Production-only dependencies, kept in a separate stage so the runner
+# image doesn't carry devDependencies (eslint, typescript, ...).
+# `prisma` is a regular dependency (not dev) because the container needs
+# the CLI at start-up to run `prisma migrate deploy`.
+FROM base AS prod-deps
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci --omit=dev
+
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
@@ -30,6 +41,7 @@ RUN npm run build
 # Production image, copy all the files and run next
 FROM base AS runner
 WORKDIR /app
+RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -37,12 +49,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Set permissions for the prisma sqlite database directory if mounted
+# The sqlite database lives on a mounted volume, not baked into the
+# image. It's created and migrated by docker-entrypoint.sh on start.
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
-# Copy the local dev.db into the image so the sqlite tables exist!
-COPY --chown=nextjs:nodejs dev.db /app/data/dev.db
 
-COPY --from=builder /app/public ./public
+# Bring in production-only node_modules first (this is where the Prisma
+# CLI + engines used by docker-entrypoint.sh come from). The standalone
+# copy below overwrites the `next`/`@next` entries with the smaller,
+# output-traced versions Next.js actually needs at runtime.
+COPY --from=prod-deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Set the correct permission for prerender cache
 RUN mkdir .next
@@ -52,9 +68,12 @@ RUN chown nextjs:nodejs .next
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-# Because we are using an sqlite database and Prisma libSql, ensure any generated prisma engine is copied
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma/
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma/
+
+# Prisma schema + migrations, needed at start-up to run migrate deploy
+COPY --chown=nextjs:nodejs prisma ./prisma
+COPY --chown=nextjs:nodejs prisma.config.ts ./
+COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 USER nextjs
 
@@ -64,8 +83,11 @@ ENV PORT=3000
 # set hostname to localhost
 ENV HOSTNAME="0.0.0.0"
 
-ENV DATABASE_URL="file:/app/data/dev.db"
+# Points at the mounted volume created above; override at deploy time to
+# use a different path or a non-sqlite database.
+ENV DATABASE_URL="file:/app/data/prod.db"
 
-# Note: Supply a DATABASE_URL env var during deployment like DATABASE_URL="file:/app/data/prod.db"
-# And run migrations or push db structure before starting the server.
-CMD ["node", "server.js"]
+# Mount a volume at /app/data to persist the sqlite database across
+# restarts/upgrades. Pending migrations are applied automatically before
+# the server starts (see docker-entrypoint.sh).
+ENTRYPOINT ["./docker-entrypoint.sh"]
