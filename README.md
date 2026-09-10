@@ -23,20 +23,26 @@ header when self-hosted (not on Vercel).
 | `DATABASE_URL` | No | SQLite connection string. Defaults to `file:./dev.db` locally; the Docker image sets it to a mounted volume path. |
 | `AUTH_SECRET` | **Yes** | Secret used by Auth.js to sign session JWTs. Generate one with `npx auth secret`. |
 | `AUTH_KEYCLOAK_ID` | **Yes** | Client ID of the OIDC client registered in your Keycloak realm. |
-| `AUTH_KEYCLOAK_SECRET` | **Yes** | Client secret for that Keycloak client. |
 | `AUTH_KEYCLOAK_ISSUER` | **Yes** | Issuer URL, e.g. `https://keycloak.example.com/realms/<realm>`. |
 | `CRON_SECRET` | No | If set, `/api/cron` requires `Authorization: Bearer <CRON_SECRET>`. Recommended if the cron endpoint is reachable from outside. |
 | `ZULIP_SITE_URL`, `ZULIP_BOT_EMAIL`, `ZULIP_API_KEY`, `ZULIP_STREAM`, `ZULIP_TOPIC` | No | Fallback Zulip config used by `/api/cron` if nothing has been saved yet in the Settings panel (which is stored in the database and takes priority). |
 
 ### Setting up the Keycloak client
 
-In your Keycloak admin console, create an OIDC client for this app (confidential, standard flow enabled) with a valid redirect URI of:
+This app authenticates as a **public** client — no client secret is
+configured or required, since the app uses PKCE (enabled by default by
+Auth.js) to secure the login instead.
 
-```
-https://<your-app-domain>/api/auth/callback/keycloak
-```
+In your Keycloak admin console, create an OIDC client for this app with:
 
-Use the client ID/secret and your realm's issuer URL (`<keycloak-base-url>/realms/<realm-name>`) for the `AUTH_KEYCLOAK_*` variables above.
+- **Client authentication**: Off (this is what makes it a public client)
+- **Standard flow**: enabled
+- **Valid redirect URI**:
+  ```
+  https://<your-app-domain>/api/auth/callback/keycloak
+  ```
+
+Use the client ID and your realm's issuer URL (`<keycloak-base-url>/realms/<realm-name>`) for the `AUTH_KEYCLOAK_*` variables above.
 
 ### Setting up the Zulip bot
 
@@ -83,7 +89,6 @@ docker run -d \
   -v birthday-tracker-data:/app/data \
   -e AUTH_SECRET=... \
   -e AUTH_KEYCLOAK_ID=... \
-  -e AUTH_KEYCLOAK_SECRET=... \
   -e AUTH_KEYCLOAK_ISSUER=https://keycloak.example.com/realms/your-realm \
   ghcr.io/<owner>/birthday-and-cake-tracker:latest
 ```
