@@ -26,6 +26,7 @@ header when self-hosted (not on Vercel).
 | `AUTH_KEYCLOAK_ISSUER` | **Yes** | Issuer URL, e.g. `https://keycloak.example.com/realms/<realm>`. |
 | `CRON_SECRET` | No | If set, `/api/cron` requires `Authorization: Bearer <CRON_SECRET>`. Recommended if the cron endpoint is reachable from outside. |
 | `ZULIP_SITE_URL`, `ZULIP_BOT_EMAIL`, `ZULIP_API_KEY`, `ZULIP_STREAM`, `ZULIP_TOPIC` | No | Fallback Zulip config used by `/api/cron` if nothing has been saved yet in the Settings panel (which is stored in the database and takes priority). |
+| `NODE_EXTRA_CA_CERTS` | No | Path to a PEM file of extra trusted CA certificates. Set this if your Keycloak and/or Zulip server use a self-signed certificate — see below. |
 
 ### Setting up the Keycloak client
 
@@ -50,6 +51,27 @@ In Zulip, go to **Personal settings → Bots** and create a new **Generic bot**
 (an incoming-webhook bot also works). Note its email and API key, and enter
 them in the app's Settings panel along with your Zulip site URL and the
 stream/topic to post reminders to.
+
+### Self-signed certificates (Keycloak / Zulip)
+
+If your Keycloak and/or Zulip server present a self-signed certificate,
+**don't** set `NODE_TLS_REJECT_UNAUTHORIZED=0` — that disables certificate
+verification for *every* outbound HTTPS request the app makes, app-wide,
+which defeats TLS entirely. Instead, give Node the certificate(s) to trust
+specifically, via [`NODE_EXTRA_CA_CERTS`](https://nodejs.org/api/cli.html#node_extra_ca_certsfile):
+
+1. Get the self-signed certificate (or the CA that issued it) as a PEM
+   file for each service. If you have both, concatenate them into one
+   bundle — Node reads every certificate in the file:
+   ```bash
+   cat keycloak-cert.pem zulip-cert.pem > ca-bundle.pem
+   ```
+2. Make that file available to the app and point `NODE_EXTRA_CA_CERTS` at
+   it — for `npm run dev`, export it in your shell or `.env`; in Docker,
+   mount it into the image's `/app/certs` mount point (see below).
+
+This is honored by both the Keycloak OIDC client and the Zulip API call
+in `/api/cron`, since both go through Node's built-in `fetch`.
 
 ## Getting started
 
@@ -97,6 +119,15 @@ docker run -d \
 override it if you want a different path or filename. To upgrade, just
 pull a new image and restart the container against the same volume — the
 entrypoint runs `prisma migrate deploy` before starting the server.
+
+If Keycloak or Zulip use self-signed certificates, also mount your CA
+bundle into `/app/certs` (created for this purpose) and point
+`NODE_EXTRA_CA_CERTS` at it:
+
+```bash
+  -v ./ca-bundle.pem:/app/certs/ca-bundle.pem:ro \
+  -e NODE_EXTRA_CA_CERTS=/app/certs/ca-bundle.pem \
+```
 
 ## Learn more
 
