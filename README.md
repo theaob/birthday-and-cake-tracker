@@ -27,6 +27,7 @@ header when self-hosted (not on Vercel).
 | `CRON_SECRET` | No | If set, `/api/cron` requires `Authorization: Bearer <CRON_SECRET>`. Recommended if the cron endpoint is reachable from outside. |
 | `ZULIP_SITE_URL`, `ZULIP_BOT_EMAIL`, `ZULIP_API_KEY`, `ZULIP_STREAM`, `ZULIP_TOPIC` | No | Fallback Zulip config used by `/api/cron` if nothing has been saved yet in the Settings panel (which is stored in the database and takes priority). |
 | `NODE_EXTRA_CA_CERTS` | No | Path to a PEM file of extra trusted CA certificates. Set this if your Keycloak and/or Zulip server use a self-signed certificate — see below. |
+| `NODE_TLS_REJECT_UNAUTHORIZED` | No | Set to `0` to disable TLS certificate verification for **all** outbound HTTPS requests the app makes. Only for closed-network deployments with no untrusted actors on the network — see below. |
 
 ### Setting up the Keycloak client
 
@@ -55,10 +56,14 @@ stream/topic to post reminders to.
 ### Self-signed certificates (Keycloak / Zulip)
 
 If your Keycloak and/or Zulip server present a self-signed certificate,
-**don't** set `NODE_TLS_REJECT_UNAUTHORIZED=0` — that disables certificate
-verification for *every* outbound HTTPS request the app makes, app-wide,
-which defeats TLS entirely. Instead, give Node the certificate(s) to trust
-specifically, via [`NODE_EXTRA_CA_CERTS`](https://nodejs.org/api/cli.html#node_extra_ca_certsfile):
+there are two ways to make the app trust it — pick based on your
+deployment.
+
+**Recommended: trust the specific certificate(s)**, via
+[`NODE_EXTRA_CA_CERTS`](https://nodejs.org/api/cli.html#node_extra_ca_certsfile).
+This is honored by both the Keycloak OIDC client and the Zulip API call in
+`/api/cron`, since both go through Node's built-in `fetch`, and it doesn't
+change how the app treats any other HTTPS connection.
 
 1. Get the self-signed certificate (or the CA that issued it) as a PEM
    file for each service. If you have both, concatenate them into one
@@ -70,8 +75,13 @@ specifically, via [`NODE_EXTRA_CA_CERTS`](https://nodejs.org/api/cli.html#node_e
    it — for `npm run dev`, export it in your shell or `.env`; in Docker,
    mount it into the image's `/app/certs` mount point (see below).
 
-This is honored by both the Keycloak OIDC client and the Zulip API call
-in `/api/cron`, since both go through Node's built-in `fetch`.
+**Alternative for closed networks: `NODE_TLS_REJECT_UNAUTHORIZED=0`.**
+This disables certificate verification for *every* outbound HTTPS request
+the app makes (not just Keycloak/Zulip) — there's no way to scope it to
+one host, since it's a process-wide Node.js setting. Only use it when the
+app runs on a closed network with no untrusted actors able to
+man-in-the-middle that traffic (no separate certificate handling needed;
+just set the env var, nothing to mount).
 
 ## Getting started
 
@@ -122,7 +132,8 @@ entrypoint runs `prisma migrate deploy` before starting the server.
 
 If Keycloak or Zulip use self-signed certificates, also mount your CA
 bundle into `/app/certs` (created for this purpose) and point
-`NODE_EXTRA_CA_CERTS` at it:
+`NODE_EXTRA_CA_CERTS` at it (or, on a closed network only, set
+`NODE_TLS_REJECT_UNAUTHORIZED=0` instead — see above):
 
 ```bash
   -v ./ca-bundle.pem:/app/certs/ca-bundle.pem:ro \
