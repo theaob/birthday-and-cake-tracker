@@ -53,6 +53,11 @@ RUN adduser --system --uid 1001 nextjs
 # image. It's created and migrated by docker-entrypoint.sh on start.
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 
+# Conventional mount point for extra trusted CA certs (e.g. if your
+# Keycloak/Zulip servers use self-signed certificates) — mount a PEM
+# bundle here and point NODE_EXTRA_CA_CERTS at it. See the README.
+RUN mkdir -p /app/certs && chown -R nextjs:nodejs /app/certs
+
 # Bring in production-only node_modules first (this is where the Prisma
 # CLI + engines used by docker-entrypoint.sh come from). The standalone
 # copy below overwrites the `next`/`@next` entries with the smaller,
